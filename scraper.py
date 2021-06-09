@@ -1,10 +1,11 @@
 import os
 import tqdm
+import  time
 import logging
 import argparse
 import pandas as pd
 
-from typing import List
+from typing import List, Dict
 from psaw import PushshiftAPI
 
 api = PushshiftAPI()
@@ -48,7 +49,7 @@ def parse_arguments():
 
 
 def main(args):
-    subreddits = args.subrreddits
+    subreddits = args.subreddits
     quota = args.quota
     os.makedirs("data", exist_ok=True)
 
@@ -61,7 +62,7 @@ def main(args):
         else:
             titles = subreddit_titles(subreddit, quota)
             df = pd.DataFrame({"title": titles, "subreddit": [subreddit] * len(titles)})
-            df.to_csv(destination)
+            df.to_csv(destination, index=False)
             logger.info("Saved {quota} titles from {subreddit} to {destination}")
 
     logger.info("Finished downloading data from Reddit.")
@@ -69,13 +70,4 @@ def main(args):
 if __name__ == "__main__":
     args = parse_arguments()
     main(args)
-
-    quota = 10000
-    subreddit = "theonion"
-    onion = subreddit_titles(subreddit, quota)
-    subreddit = "nottheonion"
-    not_onion = subreddit_titles(subreddit, quota)
-    df = combine_titles({"theonion": onion, "nottheonion": not_onion})
-    cleaned_df = clean_titles(df)
-    
 

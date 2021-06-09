@@ -1,13 +1,18 @@
 import re
 import nltk
+import spacy
+import numpy as np
 import pandas as pd
 
-from typing import List, Dict
+from typing import List, Tuple, Dict
 from nltk.corpus import stopwords
-nltk.download("stopwords")
+from sklearn.preprocessing import train_test_split
 
+nltk.download("stopwords")
+nlp = spacy.load('en_core_web_sm')
 
 tokenizer = nltk.RegexpTokenizer(r"\w+")
+lemmatizer = nltk.WordNetLemmatizer()
 
 def remove_emojis(text: str) -> List[str]:
     regex = re.compile(
@@ -22,27 +27,55 @@ def remove_emojis(text: str) -> List[str]:
     return regex.sub(r"", text)
 
 def remove_stop_words(text: List[str]) -> List[str]:
-    tokens_without_stop_words = [t for t in text if t not in nltk.stop
+    tokens_without_stop_words = [t for t in text if t not in stopwords.words()]
+    return tokens_without_stop_words
 
-def lemmatize(text):
-    # TODO
 
-def clean_text(text: str) -> List[str]:
-    text_no_emoji = remove_emojis(text)
-    clean_text = tokenizer.tokenize(text_no_emoji)
-    return clean_text
+def preprocess_title(text: str) -> List[str]:
+    no_emoji = remove_emojis(text)
+    tokens = tokenizer.tokenize(no_emoji)
+    lemmas = [lemmatizer.lemmatize(t) for t in tokens]
+    stopless = remove_stop_words(lemmas)
+
+    return stopless
 
 def clean_titles(df: pd.DataFrame) -> pd.DataFrame:
-    df.title = df.title.apply(lambda x: clean_text(x))
+    df.title = df.title.apply(lambda x: preprocess_title(x))
     return df
 
-# TODO: Get a list of subreddits to use classification on
-# TODO: Decide on a simple traditional model first to use
-# TODO: Save dataset as pandas dataframe to use later ✓
-# TODO: Convert dataset into representation that can be used by the model
-# TODO: Decide on preprocessing steps needed
-# TODO: Split train test dataset 
-# TODO: Decide on two interesting subreddits that could be for this ✓
-# TODO: Evaluate performance 
-# TODO: Try and use a basic LSTM/network approach
-# TODO: Add unit tests for these
+def sentence_embedding(sentences: pd.Series) -> np.array:
+    embeddings = np.array([nlp(sen).vector for sen in sentences])
+    return embeddings
+
+def split_train_test_validation(X: np.array, y: np.array, ratios: Tuple[int, int, int]) -> List[np.array]:
+    train_split, valid_split, test_split = ratios
+
+    assert sum(ratios) == 1, "Ratios to split are not valid"
+    assert valid_split > 0, "Validation size must be more than 0"
+    assert test_split > 0, "Test size must be more than 0"
+
+    X_train, X_valid_test, y_train, y_valid_test = train_test_split(X, y, train_size=train_split, test_size = 1 - train_split)
+
+    X_valid, X_test, y_valid, y_test = train_test_split(X_valid_test, y_valid_test, train_size=valid_split / (valid_split + test_split), test_size=test_split / (valid_split + test_split))
+
+    return [X_train, X_valid, X_test, y_train, y_valid, y_test]
+
+def prepare_dataset(data_paths: List[str], split_ratios: Tuple[int, int, int]) -> Dict[str, Tuple[np.array, np.array]]:
+    df = pd.concat([pd.read_csv(csv) for csv in data_paths])
+    X = sentence_embedding(df.title)
+    y = pd.get_dummies(df.subreddit)
+
+    labels = y.columns
+    y = y.to_numpy()
+
+    X_train, X_valid, X_test, y_train, y_valid, y_test = split_train_test_validation(X, y, split_ratios)
+
+    dataset = {
+        "train": (X_train, y_train),
+        "validation": (X_valid, y_valid),
+        "test": (X_test, y_test),
+        "labels": labels,
+    }
+
+    return dataset
+

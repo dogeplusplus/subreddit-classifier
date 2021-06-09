@@ -1,0 +1,14 @@
+- Get a list of subreddits to use classification on ✓
+- Decide on a simple traditional model first to use
+- Save dataset as pandas dataframe to use later ✓
+- Convert dataset into representation that can be used by the model
+- Decide on preprocessing steps needed
+- Split train test dataset 
+- Decide on two interesting subreddits that could be for this ✓
+- Evaluate performance 
+- Try and use a basic LSTM/network approach
+- Add unit tests for these
+- Argparse script to download data from multiple subreddits ✓
+- Add requirements.txt and firstTimeSetup.sh
+- Add docstring
+- Implement SIF embedding
