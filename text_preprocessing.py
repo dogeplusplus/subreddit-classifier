@@ -6,7 +6,7 @@ import pandas as pd
 
 from typing import List, Tuple, Dict
 from nltk.corpus import stopwords
-from sklearn.preprocessing import train_test_split
+from sklearn.model_selection import train_test_split
 
 nltk.download("stopwords")
 nlp = spacy.load('en_core_web_sm')
@@ -47,20 +47,20 @@ def sentence_embedding(sentences: pd.Series) -> np.array:
     embeddings = np.array([nlp(sen).vector for sen in sentences])
     return embeddings
 
-def split_train_test_validation(X: np.array, y: np.array, ratios: Tuple[int, int, int]) -> List[np.array]:
-    train_split, valid_split, test_split = ratios
+def split_train_test_validation(X: np.array, y: np.array, ratios: Tuple[int, int]) -> List[np.array]:
+    valid_split, test_split = ratios
 
-    assert sum(ratios) == 1, "Ratios to split are not valid"
+    assert sum(ratios) < 1, "Ratios to split are not valid"
     assert valid_split > 0, "Validation size must be more than 0"
     assert test_split > 0, "Test size must be more than 0"
 
-    X_train, X_valid_test, y_train, y_valid_test = train_test_split(X, y, train_size=train_split, test_size = 1 - train_split)
+    X_train, X_valid_test, y_train, y_valid_test = train_test_split(X, y, test_size = valid_split + test_split)
 
-    X_valid, X_test, y_valid, y_test = train_test_split(X_valid_test, y_valid_test, train_size=valid_split / (valid_split + test_split), test_size=test_split / (valid_split + test_split))
+    X_valid, X_test, y_valid, y_test = train_test_split(X_valid_test, y_valid_test, test_size=test_split / (valid_split + test_split))
 
     return [X_train, X_valid, X_test, y_train, y_valid, y_test]
 
-def prepare_dataset(data_paths: List[str], split_ratios: Tuple[int, int, int]) -> Dict[str, Tuple[np.array, np.array]]:
+def prepare_dataset(data_paths: List[str], split_ratios: Tuple[int, int, int]) -> Dict[str, Dict[str, np.array]]:
     df = pd.concat([pd.read_csv(csv) for csv in data_paths])
     X = sentence_embedding(df.title)
     y = pd.get_dummies(df.subreddit)
@@ -71,9 +71,9 @@ def prepare_dataset(data_paths: List[str], split_ratios: Tuple[int, int, int]) -
     X_train, X_valid, X_test, y_train, y_valid, y_test = split_train_test_validation(X, y, split_ratios)
 
     dataset = {
-        "train": (X_train, y_train),
-        "validation": (X_valid, y_valid),
-        "test": (X_test, y_test),
+        "train": {"X": X_train, "y": y_train},
+        "validation": {"X": X_valid, "y": y_valid},
+        "test": {"X": X_test, "y": y_test},
         "labels": labels,
     }
 
