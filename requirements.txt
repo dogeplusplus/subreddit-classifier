@@ -4,3 +4,4 @@ tqdm
 psaw
 spacy
 scikit-learn
+pre-commit

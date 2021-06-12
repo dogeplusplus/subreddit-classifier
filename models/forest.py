@@ -1,11 +1,12 @@
 import os
 import glob
+import mlflow
 import pickle
 import logging
 import argparse
 import numpy as np
 
-from typing import List
+from typing import List, Tuple, Dict
 from sklearn.model_selection import GridSearchCV
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import f1_score, accuracy_score, confusion_matrix
@@ -13,6 +14,13 @@ from sklearn.metrics import f1_score, accuracy_score, confusion_matrix
 from text_preprocessing import prepare_dataset
 
 logging.getLogger().setLevel(logging.INFO)
+
+def fetch_logged_data(run_id: str) -> Tuple[Dict, Dict, Dict, Dict]:
+    client = mlflow.tracking.MlflowClient()
+    data = client.get_run(run_id).data
+    tags = {k: v for k, v in data.tags.items() if not k.startswith("mlflow.")}
+    artifacts = [f.path for f in client.list_artifacts(run_id, "model")]
+    return data.params, data.metrics, tags, artifacts
 
 def grid_train(X: np.array, y: np.array) -> RandomForestClassifier:
     clf = RandomForestClassifier()
@@ -29,19 +37,6 @@ def grid_train(X: np.array, y: np.array) -> RandomForestClassifier:
     return grid_search.best_estimator_
 
 
-def save_model(model: RandomForestClassifier, name: str):
-    idx = 0
-    os.makedirs("model_instances", exist_ok=True)
-    model_path = f"model_instances/{name}_{idx}.pkl"
-    while os.path.isfile(model_path):
-        idx += 1
-        model_path = f"model_instances/{name}_{idx}.pkl"
-
-    output = open(model_path, "wb")
-    pickle.dump(model, output)
-    logging.info(f"Saved model to: {model_path}")
-
-
 def parse_arguments():
     parser = argparse.ArgumentParser("Grid train forest classifier")
     parser.add_argument("-f", "--files", nargs="+", type=str, help="Subreddit CSV files to use", default=glob.glob("data/*.csv"))
@@ -56,26 +51,25 @@ def main(args):
     splits = args.splits
     dataset = prepare_dataset(args.files, splits)
 
-    best_forest = grid_train(dataset["train"]["X"], dataset["train"]["y"])
+    with mlflow.start_run() as run:
+        best_forest = grid_train(dataset["train"]["X"], dataset["train"]["y"])
 
-    for subset in ("train", "validation", "test"):
-        predictions = best_forest.predict(dataset[subset]["X"])
-        accuracy = accuracy_score(dataset[subset]["y"], predictions)
+        for subset in ("train", "validation", "test"):
+            predictions = best_forest.predict(dataset[subset]["X"])
+            accuracy = accuracy_score(dataset[subset]["y"], predictions)
 
-        predicted_class = np.argmax(predictions, axis=-1)
-        labels = np.argmax(dataset[subset]["y"], axis=-1)
-        f1 = f1_score(labels, predicted_class)
-        conf_matrix = confusion_matrix(labels, predicted_class)
+            predicted_class = np.argmax(predictions, axis=-1)
+            labels = np.argmax(dataset[subset]["y"], axis=-1)
+            f1 = f1_score(labels, predicted_class)
+            conf_matrix = confusion_matrix(labels, predicted_class)
 
-        logging.info(f"{subset}{'-' * (20 - len(subset))}")
-        logging.info(f"accuracy: {accuracy:.5f}")
-        logging.info(f"F1 score: {f1:.5f}")
-        logging.info(f"Classes: {dataset['labels']}")
-        logging.info(conf_matrix)
+            mlflow.log_metric(f"{subset}_accuracy", accuracy)
+            mlflow.log_metric(f"{subset}_f1", f1)
 
-    save_model(best_forest, args.name)
+        mlflow.log_param("labels", labels)
+        mlflow.log_params(best_forest.get_params())
+        mlflow.sklearn.log_model(best_forest, "sk_models")
 
-    import pdb; pdb.set_trace()
 
 if __name__ == "__main__":
     args = parse_arguments()
